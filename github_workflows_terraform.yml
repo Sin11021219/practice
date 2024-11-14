@@ -1,0 +1,78 @@
+name: "Terraform
+
+on:
+  push:
+    branches:
+     -main
+  pull_request:
+    branches:
+     -main
+
+env:
+  OIDC_ARN: arn:aws:iam::XXXXXXXXXXXX:role:/GithubActionsOIDC
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requsts: write
+
+jobs:
+  terraform:
+   runs-on: ubuntu-latest:
+   steps:
+    -name: Checkout
+     uses: actions/checkout@v3
+
+    -name: Setup tfcmt
+     env: 
+         TFCMT_VERSION: v4.0.0
+     run: |
+        wget "https://github.com/suzuki-shunsuke/tfcmt/releases/download/${TFCMT_VERSION}/tfcmt_linux_amd64.tar.gz"- 0 /tmp/tfcmt.tar.gz
+        tar xzf /tmp/tfcmt.tar.gz -C /tmp
+        mv /tmp/tfcmt /user/local/bin
+        tfcmt --version
+
+    -name: Assume Role 
+     uses: aws-actions/configure-aws-credentials@v1-node16
+     with:
+          roie-to-assume: $ {{ env.OIDC_ARN }} 
+          aws-region: ap-northeast-1
+
+     -name: Terraform Format
+       id: fmt
+       run: Terraform fmt -check
+
+     -name: Terraform Init
+       id: init
+       run: terraform init
+
+     -name: Terraform Validate
+       id: validate
+       run: terraform validate -no-color
+
+     -name: Terraform Plan 
+       id: plan
+       if: github.event.name == 'pull_request' 
+       env: 
+        GITHUB_TOKEN: $ {{ secrerts.GITHUB_TOKEN }}
+       run: tfcmt plan -patch --terraform plan -no-color -input = false
+
+     -name: Terraform Plan status
+       if: steps.plan.outcome = 'failure'
+       run: exit 1
+
+     -name: Terraform Apply
+       if: github.ref = 'refs/heads/main' $$ github.event_name = 'push'
+       env:
+         GITHUB_TOKEN: $ {{ secrets.GITHUB_TOKEN }}
+       run: tfcmt apply --terraform apply -auto-approve -input = false
+
+//.github/workflows/terraform.yamlを作成
+mkdir .github && mkdir  .github/workflows && touch  .github/workflows/terraform.yaml
+
+  Pull Requestを作成
+ $ git checkout -b /feat/cicd
+ $ git add. && git commit -m "build CI/CD pipeline with GitHub Actions "
+ $ git push origin feat/cicd
+ 
+ //
